@@ -68,8 +68,15 @@
     </header>
 
     <!-- Main Content -->
-    <main id="app" class="flex-1 p-4 md:p-8 flex items-start justify-center w-full">
-      <!-- Dynamic Content Rendered Here -->
+    <main class="flex-1 p-4 md:p-8 flex items-start justify-center w-full">
+      <div id="app" class="w-full flex justify-center">
+        <!-- Default Loading State -->
+        <div class="text-center mt-20 p-4">
+          <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p class="text-slate-400" id="loading-text">読み込み中...</p>
+          <p id="error-log" class="text-red-500 text-sm mt-4 hidden"></p>
+        </div>
+      </div>
     </main>
 
     <!-- Footer -->
@@ -87,11 +94,11 @@
 
     <!-- Modal for Explanations -->
     <div id="modal-overlay" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm hidden">
-      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 slide-up">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 slide-up relative">
         <h3 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
           <span class="text-indigo-600">✨</span> Geminiによる解説
         </h3>
-        <div id="modal-content" class="prose prose-slate text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+        <div id="modal-content" class="prose prose-slate text-slate-600 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto min-h-[100px]">
           <!-- Content -->
         </div>
         <button id="modal-close" class="mt-6 w-full py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors">
@@ -100,6 +107,20 @@
       </div>
     </div>
 
+    <script>
+      // Global error handler
+      window.addEventListener('error', function(event) {
+        const errorLog = document.getElementById('error-log');
+        const loadingText = document.getElementById('loading-text');
+        if (errorLog && loadingText) {
+          loadingText.textContent = "エラーが発生しました";
+          loadingText.className = "text-red-600 font-bold";
+          errorLog.textContent = event.message || "Unknown error occurred";
+          errorLog.classList.remove('hidden');
+        }
+        console.error("Global error:", event.error);
+      });
+    </script>
     <script type="module" src="./main.js"></script>
   <script type="module" src="/index.tsx"></script>
 </body>

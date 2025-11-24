@@ -28,25 +28,40 @@ const modalCloseBtn = document.getElementById('modal-close');
 
 // --- Initialization ---
 function init() {
-  renderStartScreen();
-  setupGlobalListeners();
+  try {
+    state.mode = 'START';
+    // Use render() to ensure the app container is cleared (removing "Loading...")
+    render();
+    setupGlobalListeners();
+  } catch (e) {
+    console.error("Init failed:", e);
+    if (app) {
+      app.innerHTML = `<div class="text-red-500 text-center p-4">アプリの起動に失敗しました。<br>${e.message}</div>`;
+    }
+  }
 }
 
 function setupGlobalListeners() {
-  headerBackBtn.addEventListener('click', () => {
-    state.mode = 'START';
-    render();
-  });
+  if (headerBackBtn) {
+    headerBackBtn.addEventListener('click', () => {
+      state.mode = 'START';
+      render();
+    });
+  }
   
-  modalCloseBtn.addEventListener('click', () => {
-    modalOverlay.classList.add('hidden');
-  });
-
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) {
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
       modalOverlay.classList.add('hidden');
-    }
-  });
+    });
+  }
+
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) {
+        modalOverlay.classList.add('hidden');
+      }
+    });
+  }
 }
 
 // --- Logic ---
@@ -70,9 +85,7 @@ function startMode(mode) {
   state.queue = queue;
   state.currentIndex = 0;
   state.score = 0;
-  // We don't clear mistakes so user can accumulate them in a session, per request behavior implication
-  // but if they re-start specific quiz, maybe resetting score is enough.
-
+  
   render();
 }
 
@@ -150,23 +163,23 @@ function render() {
 
   // Update Header
   if (state.mode === 'START') {
-    headerBackBtn.classList.add('hidden');
-    progressContainer.classList.add('hidden');
+    if(headerBackBtn) headerBackBtn.classList.add('hidden');
+    if(progressContainer) progressContainer.classList.add('hidden');
   } else if (state.mode !== 'LIST_VIEW' && state.mode !== 'REVIEW') {
-    headerBackBtn.classList.remove('hidden');
-    progressContainer.classList.remove('hidden');
+    if(headerBackBtn) headerBackBtn.classList.remove('hidden');
+    if(progressContainer) progressContainer.classList.remove('hidden');
     
     const total = state.queue.length;
     const current = state.currentIndex + 1;
-    progressText.textContent = `${current} / ${total}`;
-    progressBar.style.width = `${(state.currentIndex / total) * 100}%`;
+    if(progressText) progressText.textContent = `${current} / ${total}`;
+    if(progressBar) progressBar.style.width = `${(state.currentIndex / total) * 100}%`;
   } else {
-    headerBackBtn.classList.remove('hidden');
-    progressContainer.classList.add('hidden');
+    if(headerBackBtn) headerBackBtn.classList.remove('hidden');
+    if(progressContainer) progressContainer.classList.add('hidden');
   }
 
   // Clear App
-  app.innerHTML = '';
+  if (app) app.innerHTML = '';
 
   switch (state.mode) {
     case 'START':
@@ -276,7 +289,7 @@ function renderStartScreen() {
   const icons = {
     book: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
     shuffle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l-5 5-4-4"/></svg>',
-    key: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>', // simplified
+    key: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
     layers: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>',
     settings: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
     alert: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>'
@@ -296,21 +309,25 @@ function renderStartScreen() {
     render();
   });
   reviewBtn.classList.add('sm:col-span-2');
+  
   if (state.mistakes.length > 0) {
     const badge = document.createElement('span');
     badge.className = "bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold ml-auto";
     badge.textContent = state.mistakes.length;
-    reviewBtn.querySelector('div:last-child').appendChild(badge);
-    // Adjust layout for badge
-    reviewBtn.querySelector('div:last-child').className += " flex-1 flex items-center justify-between";
+    
+    // Careful with DOM manipulation of the string-generated HTML
+    const textContainer = reviewBtn.querySelector('div:last-child');
+    if (textContainer) {
+      textContainer.className += " flex-1 flex items-center justify-between";
+      textContainer.appendChild(badge);
+    }
   }
   grid.appendChild(reviewBtn);
 
   card.innerHTML = title;
   card.appendChild(rangeContainer);
   card.appendChild(grid);
-  container.appendChild(card);
-  app.appendChild(container);
+  if(app) app.appendChild(container);
 }
 
 // 2. List View
@@ -352,7 +369,7 @@ function renderListView() {
   tableWrapper.appendChild(table);
   container.appendChild(header);
   container.appendChild(tableWrapper);
-  app.appendChild(container);
+  if(app) app.appendChild(container);
 }
 
 // 3. Choice Quiz Component (Used for Mode 2, 4, 5)
@@ -419,7 +436,7 @@ function renderChoiceQuiz() {
 
   card.appendChild(grid);
   container.appendChild(card);
-  app.appendChild(container);
+  if(app) app.appendChild(container);
 }
 
 // 4. Typing Quiz Component
@@ -477,7 +494,7 @@ function renderTypingQuiz() {
   formContainer.appendChild(form);
   card.appendChild(formContainer);
   container.appendChild(card);
-  app.appendChild(container);
+  if(app) app.appendChild(container);
 
   // Auto focus
   setTimeout(() => input.focus(), 50);
@@ -513,7 +530,7 @@ function renderReviewScreen() {
       render();
     };
     container.appendChild(btn);
-    app.appendChild(container);
+    if(app) app.appendChild(container);
     return;
   }
 
@@ -562,7 +579,7 @@ function renderReviewScreen() {
   });
 
   container.appendChild(list);
-  app.appendChild(container);
+  if(app) app.appendChild(container);
 }
 
 // Start app
