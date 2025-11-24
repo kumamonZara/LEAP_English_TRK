@@ -1,14 +1,15 @@
+
 import { WORD_LIST } from './data.js';
 import { explainWord } from './gemini.js';
 
-// --- State ---
+// --- Application State ---
 const state = {
   mode: 'START', // START, LIST_VIEW, RANDOM_CHOICE, TYPING, SEQUENTIAL_CHOICE, MIXED, REVIEW
   range: { start: 1, end: WORD_LIST.length },
   queue: [],
   currentIndex: 0,
   score: 0,
-  mistakes: [], // IDs
+  mistakes: [], // Array of Word IDs
   waitingForFeedback: false
 };
 
@@ -28,17 +29,14 @@ const modalCloseBtn = document.getElementById('modal-close');
 
 // --- Initialization ---
 function init() {
-  try {
-    state.mode = 'START';
-    // Use render() to ensure the app container is cleared (removing "Loading...")
-    render();
-    setupGlobalListeners();
-  } catch (e) {
-    console.error("Init failed:", e);
-    if (app) {
-      app.innerHTML = `<div class="text-red-500 text-center p-4">アプリの起動に失敗しました。<br>${e.message}</div>`;
-    }
+  if (!app) {
+    console.error("App root not found");
+    return;
   }
+  // Initialize range end to list length
+  state.range.end = WORD_LIST.length;
+  render();
+  setupGlobalListeners();
 }
 
 function setupGlobalListeners() {
@@ -48,13 +46,11 @@ function setupGlobalListeners() {
       render();
     });
   }
-  
   if (modalCloseBtn) {
     modalCloseBtn.addEventListener('click', () => {
       modalOverlay.classList.add('hidden');
     });
   }
-
   if (modalOverlay) {
     modalOverlay.addEventListener('click', (e) => {
       if (e.target === modalOverlay) {
@@ -64,27 +60,30 @@ function setupGlobalListeners() {
   }
 }
 
-// --- Logic ---
+// --- Logic Helpers ---
 
 function getWordsInRange() {
   return WORD_LIST.filter(w => w.id >= state.range.start && w.id <= state.range.end);
 }
 
 function startMode(mode) {
-  state.mode = mode;
   let queue = getWordsInRange();
 
+  if (queue.length === 0) {
+    alert("選択された範囲に単語がありません。");
+    return;
+  }
+
   if (mode === 'RANDOM_CHOICE' || mode === 'MIXED') {
-    queue = queue.sort(() => Math.random() - 0.5);
-  } else if (mode === 'SEQUENTIAL_CHOICE' || mode === 'TYPING') {
-    queue = queue.sort((a, b) => a.id - b.id);
-  } else if (mode === 'LIST_VIEW') {
-    queue = queue.sort((a, b) => a.id - b.id);
+    queue = [...queue].sort(() => Math.random() - 0.5);
+  } else if (mode === 'SEQUENTIAL_CHOICE' || mode === 'TYPING' || mode === 'LIST_VIEW') {
+    queue = [...queue].sort((a, b) => a.id - b.id);
   }
 
   state.queue = queue;
   state.currentIndex = 0;
   state.score = 0;
+  state.mode = mode;
   
   render();
 }
@@ -93,10 +92,10 @@ function handleAnswer(isCorrect, currentWord) {
   if (state.waitingForFeedback) return;
   state.waitingForFeedback = true;
 
-  // Show Feedback
+  // Visual Feedback
   showFeedback(isCorrect, currentWord);
 
-  // Update State
+  // Update Score/Mistakes
   if (isCorrect) {
     state.score++;
   } else {
@@ -105,6 +104,7 @@ function handleAnswer(isCorrect, currentWord) {
     }
   }
 
+  // Next Question logic
   setTimeout(() => {
     hideFeedback();
     state.waitingForFeedback = false;
@@ -113,9 +113,9 @@ function handleAnswer(isCorrect, currentWord) {
       state.currentIndex++;
       render();
     } else {
-      // Finish
+      // Quiz Complete
       setTimeout(() => {
-        alert(`クイズ終了！ スコア: ${state.score}/${state.queue.length}`);
+        alert(`クイズ終了！\nスコア: ${state.score} / ${state.queue.length}`);
         state.mode = 'START';
         render();
       }, 100);
@@ -124,62 +124,51 @@ function handleAnswer(isCorrect, currentWord) {
 }
 
 function showFeedback(isCorrect, word) {
+  if (!feedbackOverlay) return;
+
   feedbackOverlay.classList.remove('hidden');
-  // Trigger reflow
+  // Force reflow
   void feedbackOverlay.offsetWidth;
   feedbackOverlay.classList.remove('opacity-0');
+
+  const bgColor = isCorrect ? 'bg-green-500' : 'bg-red-500';
+  feedbackContent.className = `p-8 rounded-2xl shadow-2xl transform scale-100 text-white text-center scale-in ${bgColor}`;
+
+  feedbackTitle.textContent = isCorrect ? '正解！ 🎉' : '不正解 😢';
   
-  feedbackContent.className = `p-8 rounded-2xl shadow-2xl transform scale-100 text-white text-center scale-in ${isCorrect ? 'bg-green-500' : 'bg-red-500'}`;
-  
-  if (isCorrect) {
-    feedbackTitle.textContent = '正解！ 🎉';
-    feedbackMessage.textContent = '';
+  // Display logic for correct answer
+  let answerText = "";
+  // In Typing mode (Jap -> Eng), answer is English.
+  // In Choice mode (Eng -> Jap), answer is Japanese.
+  if (state.mode === 'TYPING') {
+    answerText = word.en;
+  } else if (state.mode === 'MIXED') {
+    // Check if the current view was typing or choice (infer from DOM or logic)
+    // Simplified: Show both to be safe in Mixed mode
+    answerText = `${word.en} / ${word.ja}`;
   } else {
-    feedbackTitle.textContent = '不正解 😢';
-    feedbackMessage.textContent = `正解: ${state.mode === 'TYPING' || (state.mode === 'MIXED' && !document.querySelector('.choice-btn')) ? word.en : word.ja}`;
+    answerText = word.ja;
   }
+
+  feedbackMessage.textContent = isCorrect ? '' : `正解: ${answerText}`;
 }
 
 function hideFeedback() {
+  if (!feedbackOverlay) return;
   feedbackOverlay.classList.add('opacity-0');
   setTimeout(() => {
     feedbackOverlay.classList.add('hidden');
   }, 300);
 }
 
-async function showExplanation(word) {
-  modalContent.innerHTML = '<div class="flex justify-center p-4"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>';
-  modalOverlay.classList.remove('hidden');
-  
-  const text = await explainWord(word.en);
-  modalContent.textContent = text;
-}
-
-// --- Rendering ---
+// --- Renderers ---
 
 function render() {
-  // Reset scroll
   window.scrollTo(0, 0);
+  app.innerHTML = ''; // Clear current content
 
-  // Update Header
-  if (state.mode === 'START') {
-    if(headerBackBtn) headerBackBtn.classList.add('hidden');
-    if(progressContainer) progressContainer.classList.add('hidden');
-  } else if (state.mode !== 'LIST_VIEW' && state.mode !== 'REVIEW') {
-    if(headerBackBtn) headerBackBtn.classList.remove('hidden');
-    if(progressContainer) progressContainer.classList.remove('hidden');
-    
-    const total = state.queue.length;
-    const current = state.currentIndex + 1;
-    if(progressText) progressText.textContent = `${current} / ${total}`;
-    if(progressBar) progressBar.style.width = `${(state.currentIndex / total) * 100}%`;
-  } else {
-    if(headerBackBtn) headerBackBtn.classList.remove('hidden');
-    if(progressContainer) progressContainer.classList.add('hidden');
-  }
-
-  // Clear App
-  if (app) app.innerHTML = '';
+  // Update Header UI
+  updateHeader();
 
   switch (state.mode) {
     case 'START':
@@ -201,6 +190,26 @@ function render() {
     case 'REVIEW':
       renderReviewScreen();
       break;
+    default:
+      app.innerHTML = '<div>Error: Unknown Mode</div>';
+  }
+}
+
+function updateHeader() {
+  if (state.mode === 'START') {
+    headerBackBtn.classList.add('hidden');
+    progressContainer.classList.add('hidden');
+  } else if (state.mode !== 'LIST_VIEW' && state.mode !== 'REVIEW') {
+    headerBackBtn.classList.remove('hidden');
+    progressContainer.classList.remove('hidden');
+    
+    const total = state.queue.length;
+    const current = state.currentIndex + 1;
+    progressText.textContent = `${current} / ${total}`;
+    progressBar.style.width = `${total > 0 ? (state.currentIndex / total) * 100 : 0}%`;
+  } else {
+    headerBackBtn.classList.remove('hidden');
+    progressContainer.classList.add('hidden');
   }
 }
 
@@ -218,9 +227,9 @@ function renderStartScreen() {
   `;
 
   // Range Selectors
-  const rangeContainer = document.createElement('div');
-  rangeContainer.className = "flex flex-col sm:flex-row gap-4 items-center justify-center mb-8 p-4 bg-slate-50 rounded-xl";
-  
+  const rangeWrapper = document.createElement('div');
+  rangeWrapper.className = "flex flex-col sm:flex-row gap-4 items-center justify-center mb-8 p-4 bg-slate-50 rounded-xl";
+
   const createSelect = (label, value, onChange) => {
     const wrap = document.createElement('div');
     wrap.className = "flex items-center gap-2 w-full sm:w-auto";
@@ -237,18 +246,16 @@ function renderStartScreen() {
       if (i === value) opt.selected = true;
       select.appendChild(opt);
     }
-    
-    select.addEventListener('change', onChange);
+    select.onchange = onChange;
     wrap.append(span, select);
     return wrap;
   };
 
-  const startSelect = createSelect('開始:', state.range.start, (e) => {
-    const val = Number(e.target.value);
-    state.range.start = val;
-    if (state.range.end < val) {
-      state.range.end = val;
-      render(); // Re-render to update selects
+  const startSel = createSelect('開始:', state.range.start, (e) => {
+    state.range.start = Number(e.target.value);
+    if (state.range.end < state.range.start) {
+      state.range.end = state.range.start;
+      render();
     }
   });
 
@@ -256,24 +263,24 @@ function renderStartScreen() {
   arrow.className = "hidden sm:block text-slate-300";
   arrow.textContent = "→";
 
-  const endSelect = createSelect('終了:', state.range.end, (e) => {
-    const val = Number(e.target.value);
-    state.range.end = val;
-    if (state.range.start > val) {
-      state.range.start = val;
+  const endSel = createSelect('終了:', state.range.end, (e) => {
+    state.range.end = Number(e.target.value);
+    if (state.range.start > state.range.end) {
+      state.range.start = state.range.end;
       render();
     }
   });
 
-  rangeContainer.append(startSelect, arrow, endSelect);
+  rangeWrapper.append(startSel, arrow, endSel);
 
-  // Buttons Grid
-  const grid = document.createElement('div');
-  grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-4";
+  // Buttons
+  const btnGrid = document.createElement('div');
+  btnGrid.className = "grid grid-cols-1 sm:grid-cols-2 gap-4";
 
-  const createBtn = (icon, title, sub, color, onClick) => {
+  const createBtn = (icon, title, sub, color, mode) => {
     const btn = document.createElement('button');
     btn.className = `p-4 bg-white border-2 border-slate-200 hover:border-${color}-500 hover:text-${color}-600 rounded-xl flex items-center gap-3 transition-all group w-full text-left`;
+    btn.onclick = () => startMode(mode);
     btn.innerHTML = `
       <div class="p-2 bg-${color}-50 text-${color}-600 rounded-lg group-hover:bg-${color}-100 shrink-0">${icon}</div>
       <div>
@@ -281,11 +288,10 @@ function renderStartScreen() {
         ${sub ? `<span class="text-xs text-slate-400">${sub}</span>` : ''}
       </div>
     `;
-    btn.onclick = onClick;
     return btn;
   };
 
-  // Icons (SVG strings)
+  // Icons
   const icons = {
     book: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
     shuffle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l-5 5-4-4"/></svg>',
@@ -295,69 +301,71 @@ function renderStartScreen() {
     alert: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>'
   };
 
-  grid.append(
-    createBtn(icons.book, '1. 単語一覧', '', 'indigo', () => startMode('LIST_VIEW')),
-    createBtn(icons.shuffle, '2. ランダムクイズ', '英語 → 日本語', 'blue', () => startMode('RANDOM_CHOICE')),
-    createBtn(icons.key, '3. タイピング', '日本語 → 英語', 'purple', () => startMode('TYPING')),
-    createBtn(icons.layers, '4. 順番通りクイズ', `No.${state.range.start}から順番に`, 'emerald', () => startMode('SEQUENTIAL_CHOICE')),
-    createBtn(icons.settings, '5. ミックスモード', 'ランダム & 入力', 'orange', () => startMode('MIXED'))
-  );
+  btnGrid.append(createBtn(icons.book, '1. 単語一覧', '', 'indigo', 'LIST_VIEW'));
+  btnGrid.append(createBtn(icons.shuffle, '2. ランダムクイズ', '英語 → 日本語', 'blue', 'RANDOM_CHOICE'));
+  btnGrid.append(createBtn(icons.key, '3. タイピング', '日本語 → 英語', 'purple', 'TYPING'));
+  btnGrid.append(createBtn(icons.layers, '4. 順番通りクイズ', `No.${state.range.start}から順番に`, 'emerald', 'SEQUENTIAL_CHOICE'));
+  
+  const mixBtn = createBtn(icons.settings, '5. ミックスモード', 'ランダム & 入力', 'orange', 'MIXED');
+  mixBtn.className += ' sm:col-span-2';
+  btnGrid.append(mixBtn);
 
   // Review Button
-  const reviewBtn = createBtn(icons.alert, '6. 間違えた単語の復習', '', 'rose', () => {
+  const revBtn = document.createElement('button');
+  revBtn.className = "p-4 bg-white border-2 border-slate-200 hover:border-rose-500 hover:text-rose-600 rounded-xl flex items-center gap-3 transition-all group w-full text-left sm:col-span-2";
+  revBtn.onclick = () => {
     state.mode = 'REVIEW';
     render();
-  });
-  reviewBtn.classList.add('sm:col-span-2');
+  };
   
+  let mistakeCountHtml = '';
   if (state.mistakes.length > 0) {
-    const badge = document.createElement('span');
-    badge.className = "bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold ml-auto";
-    badge.textContent = state.mistakes.length;
-    
-    // Careful with DOM manipulation of the string-generated HTML
-    const textContainer = reviewBtn.querySelector('div:last-child');
-    if (textContainer) {
-      textContainer.className += " flex-1 flex items-center justify-between";
-      textContainer.appendChild(badge);
-    }
+    mistakeCountHtml = `<span class="bg-rose-100 text-rose-700 px-2 py-1 rounded-full text-xs font-bold">${state.mistakes.length}</span>`;
   }
-  grid.appendChild(reviewBtn);
+  
+  revBtn.innerHTML = `
+    <div class="p-2 bg-rose-50 text-rose-600 rounded-lg group-hover:bg-rose-100 shrink-0">${icons.alert}</div>
+    <div class="flex-1 flex items-center justify-between">
+      <span class="font-bold text-slate-700 group-hover:text-rose-700 block">6. 間違えた単語の復習</span>
+      ${mistakeCountHtml}
+    </div>
+  `;
+  btnGrid.append(revBtn);
 
   card.innerHTML = title;
-  card.appendChild(rangeContainer);
-  card.appendChild(grid);
-  if(app) app.appendChild(container);
+  card.appendChild(rangeWrapper);
+  card.appendChild(btnGrid);
+  container.appendChild(card);
+  app.appendChild(container);
 }
 
 // 2. List View
 function renderListView() {
   const container = document.createElement('div');
   container.className = "w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200 slide-up";
-  
-  const header = document.createElement('div');
-  header.className = "bg-indigo-600 p-4";
-  header.innerHTML = '<h2 class="text-xl font-bold text-white text-center">単語一覧</h2>';
-
-  const tableWrapper = document.createElement('div');
-  tableWrapper.className = "overflow-x-auto";
-  const table = document.createElement('table');
-  table.className = "w-full text-left text-sm text-slate-600";
-  table.innerHTML = `
-    <thead class="bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
-      <tr>
-        <th class="px-6 py-3">No.</th>
-        <th class="px-6 py-3">日本語</th>
-        <th class="px-6 py-3">英語</th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-slate-100"></tbody>
+  container.innerHTML = `
+    <div class="bg-indigo-600 p-4">
+      <h2 class="text-xl font-bold text-white text-center">単語一覧</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm text-slate-600">
+        <thead class="bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
+          <tr>
+            <th class="px-6 py-3">No.</th>
+            <th class="px-6 py-3">日本語</th>
+            <th class="px-6 py-3">英語</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+        </tbody>
+      </table>
+    </div>
   `;
   
-  const tbody = table.querySelector('tbody');
-  state.queue.forEach((word, index) => {
+  const tbody = container.querySelector('tbody');
+  state.queue.forEach((word, i) => {
     const tr = document.createElement('tr');
-    tr.className = index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+    tr.className = i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
     tr.innerHTML = `
       <td class="px-6 py-4 font-medium text-slate-900">${word.id}</td>
       <td class="px-6 py-4">${word.ja}</td>
@@ -365,32 +373,31 @@ function renderListView() {
     `;
     tbody.appendChild(tr);
   });
-
-  tableWrapper.appendChild(table);
-  container.appendChild(header);
-  container.appendChild(tableWrapper);
-  if(app) app.appendChild(container);
+  
+  app.appendChild(container);
 }
 
-// 3. Choice Quiz Component (Used for Mode 2, 4, 5)
+// 3. Choice Quiz (Random & Sequential)
 function renderChoiceQuiz() {
   const currentWord = state.queue[state.currentIndex];
-  
-  // Generate Options
+  if (!currentWord) return;
+
+  // Create Distractors
   const distractors = WORD_LIST
     .filter(w => w.id !== currentWord.id)
     .sort(() => 0.5 - Math.random())
     .slice(0, 3);
-  const options = [...distractors, currentWord].sort(() => 0.5 - Math.random());
+  
+  const choices = [...distractors, currentWord].sort(() => 0.5 - Math.random());
 
   const container = document.createElement('div');
   container.className = "w-full max-w-2xl mx-auto";
 
   const card = document.createElement('div');
   card.className = "bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200 slide-up";
-  
+
   const modeLabel = state.mode === 'MIXED' ? 'ミックスモード' : (state.mode === 'RANDOM_CHOICE' ? 'ランダムクイズ' : '順番通りクイズ');
-  
+
   card.innerHTML = `
     <div class="bg-gradient-to-r from-blue-500 to-indigo-600 p-6 text-center">
       <p class="text-blue-100 text-sm font-semibold uppercase tracking-wider mb-2">${modeLabel}</p>
@@ -401,48 +408,45 @@ function renderChoiceQuiz() {
   const grid = document.createElement('div');
   grid.className = "p-8 grid grid-cols-1 md:grid-cols-2 gap-4";
 
-  options.forEach(option => {
+  choices.forEach(opt => {
     const btn = document.createElement('button');
-    btn.className = "choice-btn p-6 rounded-xl text-lg font-bold transition-all duration-200 shadow-sm border-2 bg-white border-slate-200 text-slate-700 hover:border-indigo-500 hover:text-indigo-600 hover:shadow-md active:scale-95";
-    btn.textContent = option.ja;
-    
-    btn.addEventListener('click', (e) => {
-      // Disable all buttons
+    btn.className = "p-6 rounded-xl text-lg font-bold transition-all duration-200 shadow-sm border-2 bg-white border-slate-200 text-slate-700 hover:border-indigo-500 hover:text-indigo-600 hover:shadow-md active:scale-95";
+    btn.textContent = opt.ja;
+    btn.onclick = () => {
+      // Lock all buttons
       const allBtns = grid.querySelectorAll('button');
       allBtns.forEach(b => b.disabled = true);
       
-      const isCorrect = option.id === currentWord.id;
+      const isCorrect = opt.id === currentWord.id;
       
-      // Visual feedback on button immediately
+      // Highlight selection
       if (isCorrect) {
-        btn.classList.remove('bg-white', 'border-slate-200', 'text-slate-700');
-        btn.classList.add('bg-green-500', 'border-green-600', 'text-white', 'scale-105');
+        btn.className = "p-6 rounded-xl text-lg font-bold transition-all duration-200 shadow-sm border-2 bg-green-500 border-green-600 text-white scale-105";
       } else {
-        btn.classList.add('bg-red-100', 'border-red-200', 'text-red-400');
-        // Highlight correct one
+        btn.className = "p-6 rounded-xl text-lg font-bold transition-all duration-200 shadow-sm border-2 bg-red-100 border-red-200 text-red-400 opacity-50";
+        // Find correct one
         allBtns.forEach(b => {
-           if (b.textContent === currentWord.ja) {
-             b.classList.remove('bg-white');
-             b.classList.add('bg-green-500', 'text-white', 'scale-105');
-           }
+          if (b.textContent === currentWord.ja) {
+            b.className = "p-6 rounded-xl text-lg font-bold transition-all duration-200 shadow-sm border-2 bg-green-500 border-green-600 text-white scale-105";
+          }
         });
       }
-
+      
       handleAnswer(isCorrect, currentWord);
-    });
-
+    };
     grid.appendChild(btn);
   });
 
   card.appendChild(grid);
   container.appendChild(card);
-  if(app) app.appendChild(container);
+  app.appendChild(container);
 }
 
-// 4. Typing Quiz Component
+// 4. Typing Quiz
 function renderTypingQuiz() {
   const currentWord = state.queue[state.currentIndex];
-  
+  if (!currentWord) return;
+
   const container = document.createElement('div');
   container.className = "w-full max-w-2xl mx-auto";
 
@@ -459,8 +463,8 @@ function renderTypingQuiz() {
     </div>
   `;
 
-  const formContainer = document.createElement('div');
-  formContainer.className = "p-8";
+  const formWrap = document.createElement('div');
+  formWrap.className = "p-8";
   
   const form = document.createElement('form');
   form.className = "flex flex-col gap-4";
@@ -471,38 +475,38 @@ function renderTypingQuiz() {
   input.placeholder = "回答を入力...";
   input.autocomplete = "off";
   
-  const btn = document.createElement('button');
-  btn.type = "submit";
-  btn.className = "w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
-  btn.textContent = "回答する";
-  btn.disabled = true;
+  const submitBtn = document.createElement('button');
+  submitBtn.type = "submit";
+  submitBtn.className = "w-full py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
+  submitBtn.textContent = "回答する";
+  submitBtn.disabled = true;
 
   input.addEventListener('input', () => {
-    btn.disabled = input.value.trim() === "";
+    submitBtn.disabled = input.value.trim() === "";
   });
 
   form.onsubmit = (e) => {
     e.preventDefault();
     const val = input.value.trim().toLowerCase();
     const isCorrect = val === currentWord.en.toLowerCase();
+    
     input.disabled = true;
-    btn.disabled = true;
+    submitBtn.disabled = true;
+    
     handleAnswer(isCorrect, currentWord);
   };
 
-  form.append(input, btn);
-  formContainer.appendChild(form);
-  card.appendChild(formContainer);
+  form.append(input, submitBtn);
+  formWrap.appendChild(form);
+  card.appendChild(formWrap);
   container.appendChild(card);
-  if(app) app.appendChild(container);
+  app.appendChild(container);
 
-  // Auto focus
   setTimeout(() => input.focus(), 50);
 }
 
-// 5. Mixed Quiz
+// 5. Mixed
 function renderMixedQuiz() {
-  // Randomly decide type
   if (Math.random() > 0.5) {
     renderTypingQuiz();
   } else {
@@ -510,48 +514,45 @@ function renderMixedQuiz() {
   }
 }
 
-// 6. Review Screen
+// 6. Review
 function renderReviewScreen() {
   const mistakesList = WORD_LIST.filter(w => state.mistakes.includes(w.id));
   
+  const container = document.createElement('div');
+  container.className = "w-full max-w-4xl mx-auto space-y-6 slide-up";
+
   if (mistakesList.length === 0) {
-    const container = document.createElement('div');
-    container.className = "text-center p-12 bg-white rounded-2xl shadow-lg slide-up max-w-2xl mx-auto";
     container.innerHTML = `
-      <div class="text-6xl mb-4">🏆</div>
-      <h2 class="text-2xl font-bold text-slate-900 mb-2">全問正解！</h2>
-      <p class="text-slate-600 mb-6">現在、間違えた問題はありません。</p>
+      <div class="text-center p-12 bg-white rounded-2xl shadow-lg">
+        <div class="text-6xl mb-4">🏆</div>
+        <h2 class="text-2xl font-bold text-slate-900 mb-2">全問正解！</h2>
+        <p class="text-slate-600 mb-6">現在、間違えた問題はありません。</p>
+        <button id="retry-btn" class="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700">
+          メニューに戻る
+        </button>
+      </div>
     `;
-    const btn = document.createElement('button');
-    btn.className = "px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700";
-    btn.textContent = "メニューに戻る";
-    btn.onclick = () => {
+    app.appendChild(container);
+    document.getElementById('retry-btn').onclick = () => {
       state.mode = 'START';
       render();
     };
-    container.appendChild(btn);
-    if(app) app.appendChild(container);
     return;
   }
 
-  const container = document.createElement('div');
-  container.className = "w-full max-w-4xl mx-auto space-y-6 slide-up";
-  
-  const header = document.createElement('div');
-  header.className = "bg-amber-50 border border-amber-200 rounded-xl p-6 text-center";
-  header.innerHTML = `
-    <h2 class="text-2xl font-bold text-amber-900">復習</h2>
-    <p class="text-amber-700">${mistakesList.length} 個の単語を間違えました。解説を確認しましょう。</p>
+  container.innerHTML = `
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+      <h2 class="text-2xl font-bold text-amber-900">復習</h2>
+      <p class="text-amber-700">${mistakesList.length} 個の単語を間違えました。解説を確認しましょう。</p>
+    </div>
+    <div id="mistake-list" class="grid grid-cols-1 gap-4"></div>
   `;
-  container.appendChild(header);
 
-  const list = document.createElement('div');
-  list.className = "grid grid-cols-1 gap-4";
-
+  const list = container.querySelector('#mistake-list');
+  
   mistakesList.forEach(word => {
     const item = document.createElement('div');
     item.className = "bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4";
-    
     item.innerHTML = `
       <div>
         <div class="flex items-baseline gap-3">
@@ -562,25 +563,29 @@ function renderReviewScreen() {
       </div>
     `;
 
-    const actions = document.createElement('div');
-    actions.className = "flex gap-2";
-    
-    const explainBtn = document.createElement('button');
-    explainBtn.className = "flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors";
-    explainBtn.innerHTML = `
+    const btn = document.createElement('button');
+    btn.className = "flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors";
+    btn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
       AI解説を見る
     `;
-    explainBtn.onclick = () => showExplanation(word);
-
-    actions.appendChild(explainBtn);
-    item.appendChild(actions);
+    btn.onclick = async () => {
+      // Show loading modal
+      modalContent.innerHTML = '<div class="flex justify-center p-4"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>';
+      modalOverlay.classList.remove('hidden');
+      
+      const text = await explainWord(word.en);
+      modalContent.textContent = text;
+    };
+    
+    const actionDiv = document.createElement('div');
+    actionDiv.appendChild(btn);
+    item.appendChild(actionDiv);
     list.appendChild(item);
   });
 
-  container.appendChild(list);
-  if(app) app.appendChild(container);
+  app.appendChild(container);
 }
 
-// Start app
+// Start
 init();
