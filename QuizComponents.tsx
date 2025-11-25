@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Word } from '../types';
 import { WORD_LIST } from '../constants';
 import { explainWord } from '../services/geminiService';
-import { Loader2, Volume2, HelpCircle } from 'lucide-react';
+import { Loader2, Volume2, HelpCircle, Search, X } from 'lucide-react';
 
 // --- Shared Components ---
 
@@ -21,28 +21,74 @@ const Feedback = ({ isCorrect, answer }: { isCorrect: boolean | null; answer: st
 // --- Mode 1: List View ---
 
 export const WordListView = ({ words }: { words: Word[] }) => {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredWords = words.filter(word => 
+    word.en.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    word.ja.includes(searchTerm)
+  );
+
   return (
-    <div className="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200">
-      <div className="bg-indigo-600 p-4">
-        <h2 className="text-xl font-bold text-white text-center">単語一覧</h2>
+    <div className="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-slate-200 flex flex-col h-[calc(100vh-140px)]">
+      <div className="bg-indigo-600 p-4 flex justify-between items-center shrink-0">
+        <h2 className="text-xl font-bold text-white">単語一覧</h2>
+        <span className="text-indigo-100 text-sm font-medium bg-indigo-700/50 px-3 py-1 rounded-full">
+            {filteredWords.length} / {words.length}
+        </span>
       </div>
-      <div className="overflow-x-auto">
+      
+      {/* Search Bar */}
+      <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+        <div className="relative max-w-md mx-auto">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-5 w-5 text-slate-400" />
+          </div>
+          <input
+            type="text"
+            className="block w-full pl-10 pr-10 py-2 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-500 focus:outline-none focus:placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 sm:text-sm transition-shadow"
+            placeholder="単語を検索 (英語 / 日本語)..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          {searchTerm && (
+            <button
+                onClick={() => setSearchTerm("")}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+            >
+                <X className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-y-auto flex-1 bg-slate-50">
         <table className="w-full text-left text-sm text-slate-600">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold sticky top-0 shadow-sm z-10">
             <tr>
-              <th className="px-6 py-3">No.</th>
-              <th className="px-6 py-3">日本語</th>
-              <th className="px-6 py-3">英語</th>
+              <th className="px-6 py-3 bg-slate-50">No.</th>
+              <th className="px-6 py-3 bg-slate-50">日本語</th>
+              <th className="px-6 py-3 bg-slate-50">英語</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {words.map((word, index) => (
-              <tr key={word.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                <td className="px-6 py-4 font-medium text-slate-900">{word.id}</td>
-                <td className="px-6 py-4">{word.ja}</td>
-                <td className="px-6 py-4 font-bold text-indigo-600">{word.en}</td>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {filteredWords.length > 0 ? (
+              filteredWords.map((word, index) => (
+                <tr key={word.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50 hover:bg-slate-100 transition-colors'}>
+                  <td className="px-6 py-4 font-medium text-slate-900 w-20">{word.id}</td>
+                  <td className="px-6 py-4">{word.ja}</td>
+                  <td className="px-6 py-4 font-bold text-indigo-600">{word.en}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <Search className="h-8 w-8 text-slate-300" />
+                    <p>検索結果が見つかりませんでした。</p>
+                  </div>
+                </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
